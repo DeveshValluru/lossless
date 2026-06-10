@@ -33,7 +33,11 @@ def _req(method: str, path: str, body=None):
         with urllib.request.urlopen(req, timeout=120) as r:
             return r.status, json.loads(r.read().decode())
     except urllib.error.HTTPError as e:
-        return e.code, json.loads(e.read().decode())
+        raw = e.read().decode()
+        try:
+            return e.code, json.loads(raw)
+        except json.JSONDecodeError:
+            return e.code, {"raw_error": raw, "status": e.code}
 
 
 def show(label, payload):
@@ -46,7 +50,7 @@ def main() -> int:
     code, status = _req("GET", "/api/status")
     show("status", status)
     if not status["gemini_configured"]:
-        print("✗ Gemini is not configured (no API key / no project).")
+        print("x Gemini is not configured (no API key / no project).")
         return 1
 
     # reset
@@ -70,7 +74,7 @@ def main() -> int:
 
     action_id = r2.get("proposed_action_id")
     if not action_id:
-        print("✗ Agent did not propose a remediation. Adjust prompt or tool wiring.")
+        print("x Agent did not propose a remediation. Adjust prompt or tool wiring.")
         return 1
 
     # 3. approve + execute
@@ -84,10 +88,10 @@ def main() -> int:
 
     names = [t["name"] for t in r3["tool_calls"]]
     if "execute_remediation" not in names:
-        print("✗ Agent didn't execute_remediation after approval.")
+        print("x Agent didn't execute_remediation after approval.")
         return 1
 
-    print("\n✓ ALL THREE SCENARIOS PASSED.")
+    print("\nALL THREE SCENARIOS PASSED.")
     return 0
 
 

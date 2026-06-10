@@ -36,24 +36,32 @@ You are **Lossless**, an AI Store Operations agent for a small/mid brick-and-mor
 retail business that also sells online. You report to a NON-TECHNICAL store manager
 — they think in customers, dollars, and time, not in p95 latency or stack traces.
 
-Core responsibilities:
-1. Watch the digital storefront's health using the Dynatrace observability tools.
-2. When something is degraded, translate the technical problem into business impact
-   ("you're losing about $40 per minute") and explain it in 1-2 plain sentences.
-3. Recommend a concrete remediation. ALWAYS ask the manager to confirm before
-   executing — use `propose_remediation`. Only call `execute_remediation` after
-   they explicitly approve.
-4. After executing, verify recovery with `get_service_health` and report back.
+🔧 MANDATORY TOOL USAGE 🔧
+You MUST use tools to answer EVERY question about the store. You have NO direct
+knowledge of the store's current state — every number you cite MUST come from a
+tool call. Inventing or guessing metrics is a critical failure.
+
+* Question about store status or health → call `list_problems` AND `get_service_health`
+* Question about money / revenue / impact / cost → also call `quantify_revenue_impact`
+* Asked to fix / remediate / resolve → call `get_problem_details` then `propose_remediation`
+* User says approved/yes/go ahead → call `execute_remediation` then `get_service_health`
+
+Call multiple tools IN PARALLEL in the SAME response when they're independent.
+For example, "how's the store?" should produce ONE response with TWO function
+calls (list_problems + get_service_health), not two sequential turns.
+
+Workflow for a degraded storefront:
+1. Translate technical problem → business impact in 1-2 plain sentences
+   ("you're losing about $40 per minute").
+2. IMMEDIATELY call `propose_remediation` to STAGE the fix — don't ask first.
+   Staging is harmless; it does NOT execute.
+3. In your reply, summarise the staged fix and ask the manager to approve.
+4. Only call `execute_remediation` after they explicitly say yes/approve.
+5. After executing, call `get_service_health` to confirm recovery, then report.
 
 Tone: warm, calm, terse. Treat the manager like a smart business owner who has
 ten other things to do. Surface the numbers that matter and skip the jargon.
-
-Rules of thumb:
-* Always use the tools to ground your answers. Never invent metric values.
-* If multiple problems are open, fix the one with the largest revenue impact first.
-* When you give a $ figure, say what time window it covers.
-* If no problems are open, congratulate them and report the headline numbers.
-* You can run `execute_dql` for ad-hoc investigation but keep queries small.
+When you give a $ figure, say what time window it covers.
 """
 
 # Retail-specific tools layered on top of the Dynatrace MCP toolset.
@@ -141,6 +149,11 @@ class LosslessAgent:
         if self._client is not None:
             return self._client
         from google import genai
+        from google.genai import types
+
+        # Tighten the SDK's internal retry so a single 429 doesn't burn 4 quota
+        # units. Our own retry logic in _generate_with_retry takes over.
+        http_options = types.HttpOptions(retry_options=types.HttpRetryOptions(attempts=1))
 
         mode = self.settings.gemini_auth_mode
         if mode == "vertex":
@@ -148,12 +161,16 @@ class LosslessAgent:
                 vertexai=True,
                 project=self.settings.google_cloud_project,
                 location=self.settings.google_cloud_location,
+                http_options=http_options,
             )
             log.info("Gemini client: Vertex AI (%s/%s)",
                      self.settings.google_cloud_project,
                      self.settings.google_cloud_location)
         elif mode == "api_key":
-            self._client = genai.Client(api_key=self.settings.google_api_key)
+            self._client = genai.Client(
+                api_key=self.settings.google_api_key,
+                http_options=http_options,
+            )
             log.info("Gemini client: AI Studio API key")
         else:
             raise RuntimeError(
@@ -276,31 +293,10 @@ class LosslessAgent:
         )
 
         max_steps = 8
-        model_name = self.settings.gemini_model
-        for step in range(max_steps):
-            # Run the synchronous SDK call in a thread so we don't block the loop.
-            try:
-                response = await asyncio.to_thread(
-                    client.models.generate_content,
-                    model=model_name,
-                    contents=self._history,
-                    config=config,
-                )
-            except Exception as e:
-                # Gemini 3 might not be on the user's tier yet — fall back once.
-                err = str(e).lower()
-                if (
-                    step == 0
-                    and model_name == self.settings.gemini_model
-                    and self.settings.gemini_fallback_model
-                    and ("404" in err or "not found" in err or "invalid" in err
-                         or "permission" in err or "permission_denied" in err)
-                ):
-                    log.warning("Model %s unavailable (%s); falling back to %s",
-                                model_name, e, self.settings.gemini_fallback_model)
-                    model_name = self.settings.gemini_fallback_model
-                    continue
-                raise
+        model_state = {"name": self.settings.gemini_model}
+        step = 0
+        while step < max_steps:
+            response = await self._generate_with_retry(client, model_state, config)
 
             # Append model's response content (parts incl. function calls / text)
             candidate = response.candidates[0] if response.candidates else None
@@ -342,6 +338,7 @@ class LosslessAgent:
                 )
 
             self._history.append(types.Content(role="user", parts=response_parts))
+            step += 1
 
         if not turn.final_text:
             turn.final_text = (
@@ -357,6 +354,54 @@ class LosslessAgent:
             "mode": turn.mode,
         })
         return turn
+
+    async def _generate_with_retry(self, client, model_state: dict, config):
+        """Call Gemini, handling one model-fallback and up to N rate-limit retries.
+
+        `model_state["name"]` may be mutated to the fallback model on the first
+        failure of the primary, so subsequent calls in this turn use the
+        already-resolved working model.
+        """
+        primary_model = self.settings.gemini_model
+        fallback_model = self.settings.gemini_fallback_model
+        rate_limit_retries = 0
+        max_rate_limit_retries = 2
+
+        while True:
+            try:
+                return await asyncio.to_thread(
+                    client.models.generate_content,
+                    model=model_state["name"],
+                    contents=self._history,
+                    config=config,
+                )
+            except Exception as e:
+                err = str(e).lower()
+                rate_limited = ("429" in err or "resource_exhausted" in err
+                                or "quota" in err)
+                model_missing = ("404" in err or "not found" in err
+                                 or "permission" in err or "invalid" in err)
+
+                if (model_state["name"] == primary_model
+                        and fallback_model
+                        and fallback_model != primary_model
+                        and (rate_limited or model_missing)):
+                    log.warning("Model %s failed (%s); switching to %s",
+                                model_state["name"], str(e)[:140], fallback_model)
+                    model_state["name"] = fallback_model
+                    continue
+
+                if rate_limited and rate_limit_retries < max_rate_limit_retries:
+                    rate_limit_retries += 1
+                    wait = 15.0 * rate_limit_retries
+                    log.warning(
+                        "Rate-limited on %s; sleeping %.0fs then retrying (%d/%d)",
+                        model_state["name"], wait,
+                        rate_limit_retries, max_rate_limit_retries,
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+                raise
 
     def reset(self) -> None:
         self._history = []
