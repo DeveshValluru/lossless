@@ -106,6 +106,9 @@ def dashboard():
         "metrics": backend.health(),
         "problems": backend.problems(),
         "revenue_impact_30m": backend.revenue_impact(30),
+        "funnel": store.conversion_funnel(),
+        "health": store.health_score(),
+        "peak_hours": store.peak_hour_context(),
     }
 
 

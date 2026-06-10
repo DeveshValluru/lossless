@@ -26,7 +26,16 @@
   <main class="grid">
     <!-- Dashboard column -->
     <section class="col dashboard">
-      <h2 class="section-title">Store right now</h2>
+      <div class="store-header-row">
+        <h2 class="section-title">Store right now</h2>
+        <div class="health-badge" id="health-badge">
+          <span class="health-grade" id="health-grade">—</span>
+          <div class="health-detail">
+            <span class="health-label" id="health-label">Loading...</span>
+            <span class="health-peak" id="health-peak"></span>
+          </div>
+        </div>
+      </div>
       <div class="kpi-row">
         <div class="kpi kpi-money" id="kpi-loss">
           <div class="kpi-label">Revenue lost · last 30 min</div>
@@ -43,6 +52,14 @@
           <div class="kpi-value" id="kpi-sessions">—</div>
           <div class="kpi-sub">checkouts/min <span id="kpi-cpm">—</span></div>
         </div>
+      </div>
+
+      <div class="panel funnel-panel">
+        <div class="panel-head">
+          <h3>Customer journey funnel</h3>
+          <span class="muted" id="funnel-bottleneck"></span>
+        </div>
+        <div id="funnel-chart" class="funnel-chart"></div>
       </div>
 
       <div class="panel">
@@ -107,6 +124,7 @@
         </form>
         <div class="chat-suggestions" id="chat-suggestions">
           <button class="chip" data-msg="How is my store doing right now?">How's my store doing?</button>
+          <button class="chip" data-msg="Where are customers dropping off in the shopping funnel?">Where are customers dropping off?</button>
           <button class="chip" data-msg="What's costing me money right now and how do we fix it?">What's costing me money?</button>
           <button class="chip" data-msg="Show me the last hour's revenue impact.">Revenue impact</button>
         </div>

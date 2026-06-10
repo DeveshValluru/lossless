@@ -266,6 +266,15 @@ class MCPBridge:
             return {"source": "synthetic", "result": self._fake_dql((args or {}).get("query", ""))}
         if name == "get_service_health":
             return {"source": "synthetic", "result": store.current_metrics()}
+        if name == "analyze_conversion_funnel":
+            return {
+                "source": "synthetic",
+                "result": {
+                    "funnel": store.conversion_funnel(),
+                    "peak_hours": store.peak_hour_context(),
+                    "health_grade": store.health_score(),
+                },
+            }
         return {"source": "synthetic", "result": None, "error": f"unknown tool {name}"}
 
     def _evidence_for(self, service: str) -> List[dict]:
