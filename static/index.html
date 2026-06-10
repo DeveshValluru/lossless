@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lossless — AI Store Ops Agent</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%2300d4aa'/%3E%3Ctext x='16' y='22' font-size='18' font-family='sans-serif' text-anchor='middle' fill='%23071421' font-weight='700'%3EL%3C/text%3E%3C/svg%3E" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">L</span>
+      <div>
+        <div class="brand-name">Lossless</div>
+        <div class="brand-tag">AI Store Ops Agent · Brick-and-mortar retail</div>
+      </div>
+    </div>
+    <div class="header-meta">
+      <span class="badge" id="mcp-mode">MCP: connecting…</span>
+      <span class="badge" id="model-name">model</span>
+      <span class="badge live">● live</span>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- Dashboard column -->
+    <section class="col dashboard">
+      <h2 class="section-title">Store right now</h2>
+      <div class="kpi-row">
+        <div class="kpi kpi-money" id="kpi-loss">
+          <div class="kpi-label">Revenue lost · last 30 min</div>
+          <div class="kpi-value">$0</div>
+          <div class="kpi-sub">vs. expected $0</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Conversion rate</div>
+          <div class="kpi-value" id="kpi-conv">—</div>
+          <div class="kpi-sub" id="kpi-conv-sub">baseline —</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Active shoppers</div>
+          <div class="kpi-value" id="kpi-sessions">—</div>
+          <div class="kpi-sub">checkouts/min <span id="kpi-cpm">—</span></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Open problems</h3>
+          <span class="muted" id="problems-count">0</span>
+        </div>
+        <div id="problems-list" class="problem-list">
+          <div class="empty">No open problems. Everything's running cleanly.</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Service health</h3>
+          <span class="muted">live · refreshes every 3s</span>
+        </div>
+        <table class="svc-table">
+          <thead>
+            <tr><th>Service</th><th>p95 latency</th><th>error rate</th><th>req/min</th></tr>
+          </thead>
+          <tbody id="svc-body"></tbody>
+        </table>
+      </div>
+
+      <div class="panel demo-panel">
+        <div class="panel-head">
+          <h3>Demo controls</h3>
+          <span class="muted">simulate incidents for the video</span>
+        </div>
+        <div class="demo-buttons">
+          <button class="btn-demo" data-kind="payments_timeout">
+            💳 Trigger payment outage
+          </button>
+          <button class="btn-demo" data-kind="cart_slow">
+            🛒 Trigger cart slowness
+          </button>
+          <button class="btn-demo" data-kind="search_outage">
+            🔍 Trigger search outage
+          </button>
+          <button class="btn-demo btn-reset" id="btn-reset">
+            ↺ Reset
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Chat column -->
+    <section class="col chat-col">
+      <h2 class="section-title">Talk to Lossless</h2>
+      <div class="chat-frame">
+        <div id="chat" class="chat"></div>
+        <form id="chat-form" class="chat-form" autocomplete="off">
+          <input
+            id="chat-input"
+            type="text"
+            placeholder="How's my store doing right now?"
+            maxlength="500"
+            required
+          />
+          <button type="submit" id="chat-send">Send</button>
+        </form>
+        <div class="chat-suggestions" id="chat-suggestions">
+          <button class="chip" data-msg="How is my store doing right now?">How's my store doing?</button>
+          <button class="chip" data-msg="What's costing me money right now and how do we fix it?">What's costing me money?</button>
+          <button class="chip" data-msg="Show me the last hour's revenue impact.">Revenue impact</button>
+        </div>
+      </div>
+
+      <div class="panel action-log-panel">
+        <div class="panel-head">
+          <h3>Agent action log</h3>
+          <span class="muted">every tool call, recent first</span>
+        </div>
+        <div id="action-log" class="action-log"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>Lossless · built on Google Cloud Gemini 3 + Dynatrace MCP · Rapid Agent Hackathon 2026</span>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
