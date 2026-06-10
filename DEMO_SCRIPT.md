@@ -16,38 +16,38 @@ Target run time: **2:50–3:00**. Speak quickly but not rushed. Total ~430 words
 
 ### 0:00 – 0:25 · The pain (hook)
 
-> "Small online retailers lose about $2,300 every hour their checkout is broken — and most of them have no idea it's happening until their accountant tells them on Monday. The signals are all sitting there in Dynatrace, but the store owner doesn't speak SRE. So I built **Lossless** — an AI agent that watches the store, translates incidents into dollars, and only acts when the owner says yes."
+> "Small online retailers lose about $2,300 every hour their checkout is broken — and most of them have no idea it's happening until their accountant tells them on Monday. The signals are sitting there in Dynatrace, but the store owner doesn't speak SRE. So I built **Lossless** — an AI agent that watches the store, translates incidents into dollars and customer journeys, and only acts when the owner says yes."
 
-**Screen**: Brand header, then quick pan across the green dashboard. No incidents yet.
+**Screen**: Brand header, then pan across the dashboard. Show the health grade (A), the green conversion funnel, all bars full. Clean state.
 
 ### 0:25 – 0:55 · Inject the incident
 
 > "Friday night, peak hour. I'll simulate what we see all the time — the payment gateway starts timing out."
 
-**Screen**: Click **"💳 Trigger payment outage"**. The "Revenue lost" tile turns red and starts climbing. Conversion rate drops. A new problem appears.
+**Screen**: Click **"Trigger payment outage"**. Watch: the health grade drops from A to F. The "Revenue lost" tile turns red. The conversion funnel's last bar (Completing purchase) collapses — the bottleneck tag appears. The problem list updates.
 
-> "Within seconds, the store is hemorrhaging. The dashboard catches it, but a non-technical owner still wouldn't know what to do."
+> "Look at the funnel — customers can browse, they can add to cart, but they CAN'T check out. That's the retail insight: not just 'something is broken' but exactly where in the customer journey people are dropping off."
 
 ### 0:55 – 1:50 · Agent investigates and proposes
 
-> "Let me just ask the agent what's going on."
+> "Let me ask the agent."
 
-**Screen**: Type **"What's costing me money right now and how do we fix it?"** and send.
+**Screen**: Type **"Where are customers dropping off and how do we fix it?"** and send.
 
 **Voice over the tool calls**:
-> "Notice it's calling `list_problems`, `get_problem_details`, and our `quantify_revenue_impact` tool — these are real Dynatrace MCP tool names. The agent is using the same MCP protocol we'd use in production."
+> "The agent calls `list_problems`, `analyze_conversion_funnel`, and `quantify_revenue_impact` — in parallel. It uses the conversion funnel to trace the bottleneck back to the payment service, then proposes a fix."
 
-**Screen**: Agent replies — something like *"Your payment gateway is timing out — you've lost about $87 in the last two minutes. I can fail over to the Stripe backup processor in 45 seconds, no in-flight cart affected. Want me to do it?"*
+**Screen**: Agent replies in plain English — mentions the funnel bottleneck, the dollar impact, peak hours context, and proposes failover to Stripe backup.
 
-> "Plain English. Dollars, not p95s. And — critically — it's asking permission. The hackathon brief emphasised user oversight, so we built it structurally: the `execute_remediation` tool refuses to run until a human approves."
+> "Plain English. Customers-and-dollars, not p95s. And — critically — it stages the fix but REFUSES to execute until a human approves. That's built structurally: the `execute_remediation` tool checks for approval, not a prompt hack."
 
 ### 1:50 – 2:25 · Approve and verify
 
 **Screen**: Click **"Approve & apply"**.
 
-> "One click. The agent now calls `execute_remediation`, watches `get_service_health` come back green, and reports the recovery."
+> "One click. The agent executes, then re-checks both service health AND the conversion funnel to confirm the customer journey is recovering."
 
-**Screen**: Action log shows: `execute_remediation`, `get_service_health`. The revenue-lost tile freezes; the problem clears.
+**Screen**: Action log shows tool calls. The funnel bars fill back up. Health grade climbs back toward A. Revenue-lost tile stops climbing.
 
 > "Done. We just resolved an incident a store owner could not have triaged alone — and they're back to selling."
 
@@ -55,7 +55,7 @@ Target run time: **2:50–3:00**. Speak quickly but not rushed. Total ~430 words
 
 **Screen**: Brief flash of the architecture diagram from the README.
 
-> "Under the hood: Gemini 3 Pro on Vertex AI orchestrates a multi-step tool loop. The Dynatrace MCP server — the official `dynatrace-oss/dynatrace-mcp-server` — is spawned as a subprocess, with a synthetic-mode fallback so judges can run the demo with zero external setup. The agent layers Dynatrace's observability tools with retail-specific ones we wrote: revenue-impact math, staged remediations, and verified rollouts."
+> "Under the hood: Gemini 3 on Vertex AI orchestrates a multi-step tool loop. The Dynatrace MCP server — the official `dynatrace-oss` package — is spawned as a subprocess. We layer on retail-specific tools: a conversion funnel analyzer, revenue-impact calculator, peak-hours awareness, and a staged remediation system with human approval gates. The agent thinks like a retail manager, not a DevOps engineer."
 
 ### 2:50 – 3:00 · Close
 

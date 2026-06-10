@@ -37,6 +37,32 @@ AVG_ORDER_VALUE_USD = 84.50
 BASELINE_CHECKOUTS_PER_MIN = 7.4
 BASELINE_CONVERSION_RATE = 0.034
 
+# Conversion funnel baseline rates (each as % of total visitors)
+FUNNEL_BASELINE = {
+    "visitors":          1.0,
+    "product_views":     0.68,
+    "add_to_cart":       0.24,
+    "checkout_started":  0.14,
+    "purchase_complete": 0.034,
+}
+
+FUNNEL_LABELS = {
+    "visitors":          "Browsing the store",
+    "product_views":     "Viewing products",
+    "add_to_cart":       "Adding to cart",
+    "checkout_started":  "Starting checkout",
+    "purchase_complete": "Completing purchase",
+}
+
+# Peak-hours traffic multipliers (hour-of-day UTC → multiplier)
+# Modelled on a US retailer whose customers peak at lunch + evening
+PEAK_HOURS = {
+    0: 0.3, 1: 0.2, 2: 0.15, 3: 0.1, 4: 0.1, 5: 0.15,
+    6: 0.3, 7: 0.5, 8: 0.7, 9: 0.85, 10: 0.95, 11: 1.1,
+    12: 1.3, 13: 1.35, 14: 1.2, 15: 1.0, 16: 1.05, 17: 1.25,
+    18: 1.4, 19: 1.35, 20: 1.2, 21: 1.0, 22: 0.7, 23: 0.45,
+}
+
 
 @dataclass
 class Incident:
@@ -266,6 +292,147 @@ class StoreSimulator:
             if inc and not inc.resolved_at:
                 inc.resolved_at = datetime.now(timezone.utc)
             return inc
+
+    # ---------- conversion funnel ----------
+
+    def conversion_funnel(self) -> dict:
+        """Conversion funnel with incident-aware degradation at each stage.
+
+        This is the retail-specific insight: instead of just "error rate is high",
+        we show WHERE in the shopping journey customers are dropping off.
+        """
+        with self._lock:
+            visitors = int(820 + 80 * math.sin(time.time() / 120))
+            current = dict(FUNNEL_BASELINE)
+
+            for inc in self._incidents.values():
+                if inc.resolved_at:
+                    continue
+                if inc.service == "search-service":
+                    # Search broken → customers can't find products
+                    current["product_views"] *= 0.15
+                    current["add_to_cart"] *= 0.15
+                    current["checkout_started"] *= 0.15
+                    current["purchase_complete"] *= 0.15
+                elif inc.service == "cart-service":
+                    # Cart slow → add-to-cart and downstream drop
+                    current["add_to_cart"] *= 0.45
+                    current["checkout_started"] *= 0.45
+                    current["purchase_complete"] *= 0.45
+                elif inc.service == "payments-service":
+                    # Payment failures → checkout/purchase collapse
+                    current["purchase_complete"] *= 0.32
+                elif inc.service == "web-frontend":
+                    # Frontend issues → everyone is affected
+                    for k in current:
+                        if k != "visitors":
+                            current[k] *= 0.40
+
+            stages = []
+            for name in FUNNEL_BASELINE:
+                base_pct = FUNNEL_BASELINE[name]
+                cur_pct = current[name]
+                drop = round((1 - cur_pct / base_pct) * 100, 1) if base_pct > 0 else 0
+                stages.append({
+                    "stage": name,
+                    "label": FUNNEL_LABELS[name],
+                    "baseline_count": int(visitors * base_pct),
+                    "current_count": int(visitors * cur_pct),
+                    "baseline_pct": round(base_pct * 100, 1),
+                    "current_pct": round(cur_pct * 100, 1),
+                    "drop_pct": max(0, drop),
+                })
+
+            # Find the bottleneck — the stage with the worst drop
+            worst = max(stages, key=lambda s: s["drop_pct"])
+            bottleneck = worst["stage"] if worst["drop_pct"] > 5 else None
+
+            return {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "total_visitors": visitors,
+                "stages": stages,
+                "bottleneck": bottleneck,
+                "bottleneck_label": FUNNEL_LABELS.get(bottleneck, ""),
+                "bottleneck_drop_pct": worst["drop_pct"] if bottleneck else 0,
+            }
+
+    # ---------- health score ----------
+
+    def health_score(self) -> dict:
+        """Overall store health as an A-F grade. Non-technical managers get this."""
+        metrics = self.current_metrics()
+        incidents = self.open_incidents()
+
+        score = 100
+        reasons: List[str] = []
+
+        # Incidents
+        for inc in incidents:
+            if inc.severity == "critical":
+                score -= 30
+                reasons.append(f"Critical: {inc.title}")
+            elif inc.severity == "warning":
+                score -= 15
+                reasons.append(f"Warning: {inc.title}")
+
+        # Conversion degradation
+        conv_ratio = (metrics["conversion_rate"]
+                      / metrics["baseline_conversion_rate"])
+        if conv_ratio < 0.5:
+            score -= 20
+            reasons.append(f"Conversion down {round((1 - conv_ratio) * 100)}%")
+        elif conv_ratio < 0.8:
+            score -= 10
+            reasons.append(f"Conversion down {round((1 - conv_ratio) * 100)}%")
+
+        # Service-level degradation
+        for svc, data in metrics["services"].items():
+            if data["latency_ms_p95"] > 2000:
+                score -= 10
+                reasons.append(f"{svc}: latency {data['latency_ms_p95']}ms")
+            if data["error_rate"] > 0.10:
+                score -= 10
+                reasons.append(f"{svc}: {round(data['error_rate'] * 100, 1)}% errors")
+
+        score = max(0, min(100, score))
+        if score >= 90:
+            grade, label = "A", "Excellent"
+        elif score >= 75:
+            grade, label = "B", "Good"
+        elif score >= 60:
+            grade, label = "C", "Degraded"
+        elif score >= 40:
+            grade, label = "D", "Poor"
+        else:
+            grade, label = "F", "Critical"
+
+        return {"score": score, "grade": grade, "label": label, "reasons": reasons}
+
+    # ---------- peak hours ----------
+
+    def peak_hour_context(self) -> dict:
+        """What's the traffic multiplier right now, and is it a bad time for an outage?"""
+        now = datetime.now(timezone.utc)
+        hour = now.hour
+        multiplier = PEAK_HOURS.get(hour, 1.0)
+        if multiplier >= 1.2:
+            period = "peak shopping hours"
+            severity_boost = "Impact is amplified — traffic is {:.0f}% above normal.".format(
+                (multiplier - 1) * 100
+            )
+        elif multiplier >= 0.8:
+            period = "normal hours"
+            severity_boost = ""
+        else:
+            period = "off-peak hours"
+            severity_boost = "Silver lining: traffic is low right now, so fewer customers affected."
+
+        return {
+            "hour_utc": hour,
+            "period": period,
+            "traffic_multiplier": multiplier,
+            "context": severity_boost,
+        }
 
     def clear_incidents(self) -> int:
         with self._lock:

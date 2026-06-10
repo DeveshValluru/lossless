@@ -100,6 +100,53 @@ async function refreshDashboard() {
         .join("");
     }
 
+    // Health score
+    if (d.health) {
+      const h = d.health;
+      const gradeEl = $("#health-grade");
+      const labelEl = $("#health-label");
+      gradeEl.textContent = h.grade;
+      labelEl.textContent = h.label;
+      const badge = $("#health-badge");
+      badge.className = "health-badge grade-" + h.grade.toLowerCase();
+    }
+
+    // Peak hours
+    if (d.peak_hours && d.peak_hours.context) {
+      $("#health-peak").textContent = d.peak_hours.period;
+    } else if (d.peak_hours) {
+      $("#health-peak").textContent = d.peak_hours.period;
+    }
+
+    // Conversion funnel
+    if (d.funnel && d.funnel.stages) {
+      const funnelEl = $("#funnel-chart");
+      const maxCount = d.funnel.stages[0].baseline_count || 1;
+      funnelEl.innerHTML = d.funnel.stages.map((s) => {
+        const basePct = Math.round((s.baseline_count / maxCount) * 100);
+        const curPct = Math.round((s.current_count / maxCount) * 100);
+        const isDegraded = s.drop_pct > 5;
+        const dropLabel = isDegraded ? ` (-${s.drop_pct}%)` : "";
+        return `
+          <div class="funnel-row ${isDegraded ? "funnel-degraded" : ""}">
+            <div class="funnel-label">${escape(s.label)}</div>
+            <div class="funnel-bars">
+              <div class="funnel-bar-bg" style="width:${basePct}%"></div>
+              <div class="funnel-bar-fg ${isDegraded ? "bar-bad" : ""}" style="width:${curPct}%"></div>
+            </div>
+            <div class="funnel-count">${s.current_count.toLocaleString()}${dropLabel}</div>
+          </div>`;
+      }).join("");
+
+      const bnEl = $("#funnel-bottleneck");
+      if (d.funnel.bottleneck) {
+        bnEl.innerHTML = '<span class="bottleneck-tag">bottleneck: ' +
+          escape(d.funnel.bottleneck_label) + '</span>';
+      } else {
+        bnEl.textContent = "healthy";
+      }
+    }
+
     // Services
     const svcBody = $("#svc-body");
     svcBody.innerHTML = Object.entries(m.services)

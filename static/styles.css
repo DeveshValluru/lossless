@@ -106,6 +106,99 @@ html, body {
   color: var(--text-dim);
 }
 
+/* ----- store header + health badge ----- */
+.store-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.health-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 14px;
+}
+.health-grade {
+  font-size: 28px;
+  font-weight: 800;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--bg-0);
+}
+.health-detail { display: flex; flex-direction: column; gap: 2px; }
+.health-label { font-weight: 700; font-size: 13px; color: var(--text); }
+.health-peak { font-size: 11px; color: var(--text-dim); text-transform: capitalize; }
+
+.grade-a .health-grade { background: var(--accent); }
+.grade-b .health-grade { background: #4ecdc4; }
+.grade-c .health-grade { background: var(--warn); color: #1a1207; }
+.grade-d .health-grade { background: #ff8c42; color: #1a1207; }
+.grade-f .health-grade { background: var(--danger); }
+.grade-f { border-color: var(--danger); }
+
+/* ----- conversion funnel ----- */
+.funnel-chart { display: flex; flex-direction: column; gap: 6px; }
+.funnel-row {
+  display: grid;
+  grid-template-columns: 130px 1fr 90px;
+  align-items: center;
+  gap: 10px;
+}
+.funnel-label {
+  font-size: 12px;
+  color: var(--text-soft);
+  text-align: right;
+  font-weight: 500;
+}
+.funnel-bars {
+  position: relative;
+  height: 22px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg-3);
+}
+.funnel-bar-bg {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  background: rgba(0, 212, 170, 0.12);
+  border-radius: 4px;
+  border: 1px dashed rgba(0, 212, 170, 0.25);
+}
+.funnel-bar-fg {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  background: linear-gradient(90deg, var(--accent) 0%, #0085ff 100%);
+  border-radius: 4px;
+  transition: width 0.6s ease;
+}
+.funnel-bar-fg.bar-bad {
+  background: linear-gradient(90deg, var(--danger) 0%, #ff8c42 100%);
+}
+.funnel-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
+.funnel-degraded .funnel-label { color: var(--danger); font-weight: 600; }
+.funnel-degraded .funnel-count { color: var(--danger); }
+.bottleneck-tag {
+  background: var(--danger-soft);
+  color: var(--danger);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
 /* ----- KPI tiles ----- */
 .kpi-row {
   display: grid;
