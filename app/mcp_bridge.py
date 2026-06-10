@@ -16,12 +16,17 @@ import asyncio
 import json
 import logging
 import os
+import sys
 from contextlib import AsyncExitStack
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from .config import get_settings
 from .store import store
+
+# On Windows, `npx` is `npx.cmd` and asyncio subprocess won't resolve it
+# without the suffix. On POSIX it's just `npx`.
+NPX_COMMAND = "npx.cmd" if sys.platform == "win32" else "npx"
 
 log = logging.getLogger("mcp_bridge")
 
@@ -121,7 +126,7 @@ class MCPBridge:
             return
 
         params = StdioServerParameters(
-            command="npx",
+            command=NPX_COMMAND,
             args=["-y", "@dynatrace-oss/dynatrace-mcp-server"],
             env={
                 **os.environ,
@@ -130,11 +135,14 @@ class MCPBridge:
                 "OAUTH_TOKEN": self.settings.dt_platform_token,
             },
         )
+        log.info("Spawning Dynatrace MCP server: %s -y @dynatrace-oss/dynatrace-mcp-server",
+                 NPX_COMMAND)
         try:
             self._stack = AsyncExitStack()
             read, write = await self._stack.enter_async_context(stdio_client(params))
             self._session = await self._stack.enter_async_context(ClientSession(read, write))
-            await asyncio.wait_for(self._session.initialize(), timeout=20.0)
+            # First run downloads the npm package (can take ~60s on cold start)
+            await asyncio.wait_for(self._session.initialize(), timeout=90.0)
             self._connected = True
             log.info("Dynatrace MCP server connected (mode=%s)", self.mode)
         except Exception as e:
