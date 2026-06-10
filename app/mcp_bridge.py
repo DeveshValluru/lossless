@@ -172,24 +172,70 @@ class MCPBridge:
             log.warning("MCP list_tools failed: %s", e)
             return []
 
+    # Tools the real Dynatrace MCP server exposes. Everything else we serve
+    # from the synthetic backend.
+    REMOTE_TOOLS = {
+        "get_environment_info",
+        "list_vulnerabilities",
+        "list_problems",
+        "find_entity_by_name",
+        "verify_dql",
+        "execute_dql",
+        "generate_dql_from_natural_language",
+        "explain_dql_in_natural_language",
+        "list_exceptions",
+    }
+
+    async def _call_remote_raw(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        res = await asyncio.wait_for(
+            self._session.call_tool(name, arguments or {}),
+            timeout=25.0,
+        )
+        text = ""
+        for c in res.content:
+            text += getattr(c, "text", "") or ""
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            return text
+
     async def call_tool(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Route a tool call: real Dynatrace MCP if connected, else synthetic."""
+        """Route a tool call to real Dynatrace MCP and/or our synthetic backend.
+
+        * `list_problems` — call BOTH (so we surface real DT problems AND
+          demo-injected synthetic incidents in a single list).
+        * Other REMOTE_TOOLS — call real MCP, fall back to synthetic on error.
+        * Anything else (our custom tools) — synthetic only.
+        """
         async with self._lock:
-            if self._connected and self._session:
-                try:
-                    res = await asyncio.wait_for(
-                        self._session.call_tool(name, arguments or {}),
-                        timeout=20.0,
-                    )
-                    text = ""
-                    for c in res.content:
-                        text += getattr(c, "text", "") or ""
+            # list_problems: merge real + synthetic so injected demo incidents always show
+            if name == "list_problems":
+                synth = self._synthetic_call(name, arguments)
+                synth_problems = synth.get("result") or []
+                if self._connected and self._session:
                     try:
-                        return {"source": "dynatrace-mcp", "result": json.loads(text)}
-                    except json.JSONDecodeError:
-                        return {"source": "dynatrace-mcp", "result": text}
+                        real = await self._call_remote_raw(name, arguments)
+                        real_problems = real if isinstance(real, list) else (
+                            real.get("problems", []) if isinstance(real, dict) else []
+                        )
+                        return {
+                            "source": "dynatrace-mcp + synthetic",
+                            "result": list(real_problems) + list(synth_problems),
+                            "real_count": len(real_problems),
+                            "synthetic_count": len(synth_problems),
+                        }
+                    except Exception as e:
+                        log.warning("MCP list_problems failed (%s); synthetic only", e)
+                return synth
+
+            # Tools that exist on the real Dynatrace MCP
+            if name in self.REMOTE_TOOLS and self._connected and self._session:
+                try:
+                    result = await self._call_remote_raw(name, arguments)
+                    return {"source": "dynatrace-mcp", "result": result}
                 except Exception as e:
-                    log.warning("MCP call_tool(%s) failed (%s); falling back", name, e)
+                    log.warning("MCP %s failed (%s); falling back to synthetic", name, e)
+
             # Synthetic fallback
             return self._synthetic_call(name, arguments)
 

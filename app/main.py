@@ -76,6 +76,14 @@ class InjectRequest(BaseModel):
 
 # ----- endpoints -----
 
+@app.get("/api/mcp/tools")
+async def mcp_tools():
+    return {
+        "mode": mcp_bridge.mode,
+        "remote_tools": await mcp_bridge.list_remote_tools(),
+    }
+
+
 @app.get("/api/status")
 def status():
     s = get_settings()
