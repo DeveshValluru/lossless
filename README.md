@@ -14,7 +14,7 @@ Small/mid retailers lose an estimated **$2,300 per hour** of online checkout dow
 
 ## What it does
 
-When you open the dashboard you see your store's live health: revenue lost in the last 30 minutes, conversion rate vs. baseline, active shoppers, service-level latency and error rates. When something goes wrong you talk to the agent:
+When you open the dashboard you see your store's live health at a glance: a letter grade (A through F), a conversion funnel showing where shoppers are dropping off, revenue lost in the last 30 minutes, and service-level latency and error rates. When something goes wrong you talk to the agent:
 
 > **Manager:** "What's costing me money right now and how do we fix it?"
 >
@@ -85,6 +85,8 @@ The agent does multi-step tool use end-to-end and always asks for sign-off befor
 - **Dynatrace MCP integration** is the official `@dynatrace-oss/dynatrace-mcp-server` Node binary, spawned via the Python `mcp` SDK over stdio. Tool names (`list_problems`, `get_problem_details`, `execute_dql`, `get_service_health`) match the upstream server so swapping in/out is transparent.
 - **Graceful synthetic fallback.** If you don't have a Dynatrace trial yet, the bridge serves a Dynatrace-shaped response from the in-memory store, so reviewers can run the demo with zero external setup.
 - **Human-in-the-loop by design.** `propose_remediation` always *stages* an action; `execute_remediation` refuses to run until the manager clicks Approve. This is the hackathon's "user oversight" requirement made structural, not a system-prompt suggestion.
+- **Conversion funnel analysis.** The agent tracks the full shopping journey (visitors → product views → add-to-cart → checkout → purchase) and shows exactly where customers drop off per incident type. A payment outage collapses the purchase stage; a search outage kills product discovery. This is genuinely retail-specific intelligence, not generic DevOps with labels.
+- **Peak-hours awareness.** The agent knows traffic patterns and factors them into impact estimates — the same outage costs 2x during evening peak vs. 3 AM.
 
 ---
 
@@ -141,7 +143,7 @@ The Dockerfile bundles Node 20 so the Dynatrace MCP server can spawn from inside
 │   ├── agent.py        Gemini 3 agent with function calling
 │   ├── mcp_bridge.py   Dynatrace MCP server bridge + synthetic fallback
 │   ├── telemetry.py    Dynatrace REST API client (dashboard data)
-│   ├── store.py        In-memory mock retail storefront + incident library
+│   ├── store.py        In-memory retail storefront + funnel + health score
 │   ├── config.py       Settings
 │   └── main.py         FastAPI app
 ├── static/
