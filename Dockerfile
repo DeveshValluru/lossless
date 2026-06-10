@@ -1,10 +1,11 @@
-FROM python:3.12-slim
+FROM python:3.12-slim-bookworm
 
-# Node for the Dynatrace MCP server (npx)
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/*
+# Node + npm for the Dynatrace MCP server (`npx -y @dynatrace-oss/...`).
+# Use Debian's own packages — bookworm ships Node 18 LTS, sufficient for MCP.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates nodejs npm \
+    && rm -rf /var/lib/apt/lists/* \
+    && node --version && npm --version
 
 WORKDIR /app
 
